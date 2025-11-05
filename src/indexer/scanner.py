@@ -25,9 +25,20 @@ def find_all_dataset_folders(address: Path) -> List[Path]:
     if start.is_file():
         start = start.parent
 
+    if not start.exists():
+        raise FileNotFoundError(f"Address does not exist: {address}")
+
+    try:
+        start_entries = list(start.iterdir())
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(f"Address does not exist: {address}") from exc
+    except PermissionError:
+        logger.warning("Permission denied: %s", start)
+        return []
+
     result: List[Path] = []
     # Include the root if it has CSVs
-    if any(is_csv(p) for p in start.iterdir() if p.is_file()):
+    if any(is_csv(p) for p in start_entries if p.is_file()):
         result.append(start)
 
     # Recurse into subdirs
