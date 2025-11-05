@@ -29,6 +29,15 @@ def cli(argv: List[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     address = Path(args.address).expanduser().resolve()
+    try:
+        address.stat()
+    except FileNotFoundError:
+        parser.error(f"Address does not exist: {address}")
+    except PermissionError:
+        parser.error(f"Address is not accessible: {address}")
+    except OSError as exc:
+        parser.error(f"Unable to access address {address}: {exc}")
+
     outdir = Path(args.outdir).expanduser().resolve()
     ensure_dir(outdir)
 
