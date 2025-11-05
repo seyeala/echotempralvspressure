@@ -1,0 +1,184 @@
+\documentclass[12pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{hyperref}
+\usepackage{listings}
+\lstset{
+  basicstyle=\ttfamily\small,
+  frame=single,
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false
+}
+\title{Understanding the Echo vs Pressure Address Indexer}
+\author{Project Documentation}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section*{Who is this guide for?}
+This document is written for readers who have \\textbf{never written code before}. It explains the project step by step, using plain language and many examples.
+
+\section{What the project does}
+\begin{itemize}
+  \item The tool looks inside a folder on your computer. We call this folder an \emph{address}.
+  \item Inside the address, the tool searches for files that end in ``.csv''. These are simple text tables that can be opened in spreadsheet programs.
+  \item It tries to match every ``echo'' CSV file with a special partner named \texttt{pressure.csv}.
+  \item It produces three helpful files:
+  \begin{enumerate}
+    \item \textbf{dataset\_index.json}: a summary in JSON format that lists each folder and the echo--pressure pairs it contains.
+    \item \textbf{summary.csv}: a spreadsheet-friendly report that shows the size of every CSV, how many rows and columns it has, and any warnings.
+    \item \textbf{errors.log}: a plain text file that lists anything unusual (for example, when \texttt{pressure.csv} is missing).
+  \end{enumerate}
+\end{itemize}
+
+\section{Why this is useful}
+Imagine you are handed a hard drive full of experiment results. Each experiment lives in its own folder and should contain many ``echo'' measurements and exactly one pressure reading. Manually checking every folder would take hours. This tool does that checking automatically and produces concise reports that can be reviewed in minutes.
+
+\section{A gentle tour of the main files}
+\begin{longtable}{>{\raggedright\arraybackslash}p{0.2\linewidth}p{0.72\linewidth}}
+\textbf{File} & \textbf{Role in plain language}\\\hline
+\texttt{src/indexer/main.py} & Provides a command-line interface. It reads your instructions (which folder to scan and where to store the results), calls the scanner, and saves the output files.\\
+\texttt{src/indexer/scanner.py} & Does the heavy lifting: walks through folders, identifies CSV files, measures their content, and records warnings.\\
+\texttt{src/indexer/io\_helpers.py} & Contains small helper functions to read CSV sizes, write files safely, and create folders as needed.\\
+\texttt{src/indexer/models.py} & Defines a simple data container called \texttt{EchoEntry}. It holds the name of an echo file and the matching pressure file.\\
+\end{longtable}
+
+\section{Step-by-step: running the tool}
+Suppose your data is stored in \texttt{/data/experiments}. Here is what happens when you run the project.
+
+\subsection{1. Start the program}
+You use Python to call the tool with the folder you want to scan. The command looks like this:
+
+\begin{lstlisting}
+python -m indexer.main --address /data/experiments --outdir artifacts
+\end{lstlisting}
+
+\textbf{Translation:} ``Python, please run the indexing program. Look at everything inside \texttt{/data/experiments} and put the reports into a folder named \texttt{artifacts}.''
+
+\subsection{2. Prepare the folders}
+The program checks that \texttt{/data/experiments} exists. If it cannot find the folder or read it, you receive a clear error message. It also makes sure the output folder (\texttt{artifacts}) exists, creating it if necessary.
+
+\subsection{3. Discover dataset folders}
+The scanner walks through the address and every subfolder. A folder counts as a dataset if it contains at least one CSV file. For example, if your files are arranged like this:
+
+\begin{lstlisting}
+/data/experiments
+├── TrialA
+│   ├── echo_day1.csv
+│   ├── echo_day2.csv
+│   └── pressure.csv
+├── TrialB
+│   ├── echo01.csv
+│   └── pressure.csv
+└── TrialC
+    └── pressure.csv
+\end{lstlisting}
+
+The tool treats \texttt{TrialA}, \texttt{TrialB}, and \texttt{TrialC} as three separate datasets.
+
+\subsection{4. Collect information about each dataset}
+For every dataset folder, the scanner:
+\begin{enumerate}
+  \item Searches for a file named exactly \texttt{pressure.csv} (not case-sensitive).
+  \item Counts how many rows and columns each CSV file contains. Empty files are noted.
+  \item Measures each file's size in bytes.
+  \item Records everything in memory, ready to be written to disk.
+\end{enumerate}
+
+If a dataset folder does not contain \texttt{pressure.csv}, the tool still records the echo files but flags the folder with a warning.
+
+\subsection{5. Write the reports}
+After all folders have been scanned, three files are produced:
+
+\begin{description}
+  \item[dataset\_index.json] Easy to read by computers and humans. It resembles the structure below:
+\end{description}
+
+\begin{lstlisting}
+{
+  "TrialA": [
+    {"echo": "echo_day1.csv", "press": "pressure.csv"},
+    {"echo": "echo_day2.csv", "press": "pressure.csv"}
+  ],
+  "TrialB": [
+    {"echo": "echo01.csv", "press": "pressure.csv"}
+  ],
+  "TrialC": []
+}
+\end{lstlisting}
+
+If two folders share the same name (for example, two different locations both called \texttt{TrialA}), the tool automatically renames the duplicates to \texttt{TrialA\#2}, \texttt{TrialA\#3}, and so on.
+
+\begin{description}
+  \item[summary.csv] A spreadsheet-friendly table. Each row contains:
+  \begin{itemize}
+    \item The folder path.
+    \item The name of the echo file (or \texttt{None} if there were only pressure readings).
+    \item The number of rows and columns in that file.
+    \item The file size in bytes.
+    \item Notes about anything unusual, such as missing pressure data or unreadable files.
+  \end{itemize}
+  \item[errors.log] Contains human-readable warnings. A typical entry might be:
+\end{description}
+
+\begin{lstlisting}
+pressure.csv not found in /data/experiments/TrialC
+\end{lstlisting}
+
+\section{Understanding the safeguards}
+\begin{itemize}
+  \item \textbf{Graceful error handling:} The tool keeps scanning even if a folder is unreadable or a CSV is broken. It simply adds a warning to \texttt{errors.log}.
+  \item \textbf{Safe file writing:} Reports are first written to temporary files and then swapped into place. This avoids partially written files if the process stops unexpectedly.
+  \item \textbf{Flexible character support:} CSV files are read using standard UTF-8 encoding, with an automatic fallback to a broader encoding if needed.
+\end{itemize}
+
+\section{Trying it yourself without fear}
+\subsection{Create a mini playground}
+You can test the tool with dummy data. Open a terminal (or command prompt) and run:
+
+\begin{lstlisting}
+mkdir -p /tmp/demo/TrialA /tmp/demo/TrialB
+printf "time,echo\n0,10\n1,12\n" > /tmp/demo/TrialA/echo_day1.csv
+printf "time,pressure\n0,101\n1,100\n" > /tmp/demo/TrialA/pressure.csv
+printf "time,echo\n0,8\n" > /tmp/demo/TrialB/echo.csv
+# Note: TrialB intentionally misses pressure.csv
+\end{lstlisting}
+
+Then run the indexer:
+
+\begin{lstlisting}
+python -m indexer.main --address /tmp/demo --outdir /tmp/demo/artifacts
+\end{lstlisting}
+
+Open \texttt{/tmp/demo/artifacts/summary.csv} in a spreadsheet application. You will see rows similar to the table below.
+
+\begin{center}
+\begin{tabular}{|l|l|r|r|r|l|}
+\hline
+Folder & Echo file & Rows & Columns & Size (bytes) & Notes \\\hline
+/tmp/demo/TrialA & echo\_day1.csv & 2 & 2 & (about 32) &  \\\hline
+/tmp/demo/TrialA & echo\_day2.csv & 0 & 0 & (file missing) & empty\_or\_unreadable \\\hline
+/tmp/demo/TrialB & echo.csv & 1 & 2 & (about 24) & missing\_pressure\_csv \\\hline
+\end{tabular}
+\end{center}
+
+The exact sizes will vary, but the structure will match what the tool records.
+
+\section{Where to go next}
+\begin{itemize}
+  \item Explore the \texttt{README.md} file for installation tips and advanced usage.
+  \item Browse the \texttt{tests/} directory to see automated checks that guarantee the tool behaves as described.
+  \item If you grow curious about the code, start with \texttt{src/indexer/main.py}; it reads almost like a recipe of the steps described above.
+\end{itemize}
+
+\section*{Glossary}
+\begin{description}
+  \item[CSV] ``Comma-separated values,'' a plain-text spreadsheet format.
+  \item[JSON] ``JavaScript Object Notation,'' a text format often used for structured data.
+  \item[Command line] A place where you type instructions instead of clicking buttons. On Windows it is ``Command Prompt'' or ``PowerShell''; on macOS and Linux it is ``Terminal''.
+\end{description}
+
+\end{document}
