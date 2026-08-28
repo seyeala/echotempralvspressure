@@ -1,0 +1,28 @@
+name: Cleanup Fin_res Stage 5.2C transfer
+
+on:
+  push:
+    paths:
+      - .github/workflows/finres-stage5-2c-cleanup.yml
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete temporary public release and tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete finres-stage5-2c-transfer-20260828 \
+            --repo seyeala/echotempralvspressure --cleanup-tag -y || true
+      - name: Delete temporary workflow artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for id in 9698554249 9698555701 9698556760 9698557186; do
+            gh api --method DELETE "/repos/seyeala/echotempralvspressure/actions/artifacts/${id}" || true
+          done
