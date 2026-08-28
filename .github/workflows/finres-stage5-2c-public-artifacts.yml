@@ -1,0 +1,74 @@
+name: Fin_res Stage5 2C public artifacts
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/finres-stage5-2c-public-artifacts.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  artifacts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download and verify bridge files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir bridge
+          cd bridge
+          BASE='https://filebin.net/finres-stage5-2c-41e7e3c8f5fd'
+          curl -fL --retry 10 --retry-all-errors --retry-delay 5 "$BASE/Fin_res_STAGE5_2C_chunk1.zip" -o Fin_res_STAGE5_2C_chunk1.zip
+          curl -fL --retry 10 --retry-all-errors --retry-delay 5 "$BASE/Fin_res_STAGE5_2C_chunk2.zip" -o Fin_res_STAGE5_2C_chunk2.zip
+          curl -fL --retry 10 --retry-all-errors --retry-delay 5 "$BASE/Fin_res_STAGE5_2C_chunk3.zip" -o Fin_res_STAGE5_2C_chunk3.zip
+          curl -fL --retry 10 --retry-all-errors --retry-delay 5 "$BASE/Fin_res_STAGE5_2C_execution_control.zip" -o Fin_res_STAGE5_2C_execution_control.zip
+          curl -fL --retry 10 --retry-all-errors --retry-delay 5 "$BASE/STAGE5_2C_BRIDGE_SUMMARY.json" -o STAGE5_2C_BRIDGE_SUMMARY.json
+          cat > SHA256SUMS.txt <<'EOF'
+          5d43f743cc85cf62fe8a10773ed57a78624977ff4e00d5dee7667b6de775f531  Fin_res_STAGE5_2C_chunk1.zip
+          a975a5bf7f1d9dc0aa1b6e3a0d543a3de1d606d68427b457854d69bf00db7cd7  Fin_res_STAGE5_2C_chunk2.zip
+          024e960d82a63012c6a2521d7aefec8504d3117c01de92c9de0ea8e8dc629101  Fin_res_STAGE5_2C_chunk3.zip
+          96d3bca8018c80908dacdbabb82d1f731b37eb3d85f9c6e7380ab261b00182b5  Fin_res_STAGE5_2C_execution_control.zip
+          9cd97420ac585872eb00680af3cac0c9992bd8b51a4cae79e92cf11530754d1e  STAGE5_2C_BRIDGE_SUMMARY.json
+          EOF
+          sha256sum -c SHA256SUMS.txt
+          python - <<'PY'
+          import json,zipfile
+          for name in ['Fin_res_STAGE5_2C_chunk1.zip','Fin_res_STAGE5_2C_chunk2.zip','Fin_res_STAGE5_2C_chunk3.zip','Fin_res_STAGE5_2C_execution_control.zip']:
+              with zipfile.ZipFile(name) as z: assert z.testzip() is None,name
+          d=json.load(open('STAGE5_2C_BRIDGE_SUMMARY.json'))
+          assert d['status']=='pass' and d['transport_summary']['transport_objects']==31 and d['transport_summary']['accessions']==1983
+          PY
+      - name: Upload chunk 1
+        uses: actions/upload-artifact@v4
+        with:
+          name: Fin_res_STAGE5_2C_chunk1
+          path: bridge/Fin_res_STAGE5_2C_chunk1.zip
+          compression-level: 0
+          retention-days: 1
+      - name: Upload chunk 2
+        uses: actions/upload-artifact@v4
+        with:
+          name: Fin_res_STAGE5_2C_chunk2
+          path: bridge/Fin_res_STAGE5_2C_chunk2.zip
+          compression-level: 0
+          retention-days: 1
+      - name: Upload chunk 3
+        uses: actions/upload-artifact@v4
+        with:
+          name: Fin_res_STAGE5_2C_chunk3
+          path: bridge/Fin_res_STAGE5_2C_chunk3.zip
+          compression-level: 0
+          retention-days: 1
+      - name: Upload control evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: Fin_res_STAGE5_2C_control
+          path: |
+            bridge/Fin_res_STAGE5_2C_execution_control.zip
+            bridge/STAGE5_2C_BRIDGE_SUMMARY.json
+            bridge/SHA256SUMS.txt
+          compression-level: 0
+          retention-days: 1
